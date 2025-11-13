@@ -1915,8 +1915,8 @@ class CppGemmTemplate(CppTemplate):
         L2_cache_size = torch._C._cpu._L2_cache_size()  # per core cache size in Bytes
         assert L2_cache_size > 0, f"Expect L2_cache_size > 0 but got {L2_cache_size}"
 
-        # epilogue_in_micro_gemm = self.n % 16 == 0
-        epilogue_in_micro_gemm = False
+        epilogue_in_micro_gemm = self.n % 16 == 0
+        # epilogue_in_micro_gemm = False
         options = dict(
             X=X,
             W=W,
