@@ -1203,25 +1203,27 @@ class CppGemmTemplate(CppTemplate):
                 Mc_blocks, Nc_blocks, Kc_blocks = blockings
                 blockings = min(Mc_blocks, Mt_blocks), min(Nc_blocks, Nt_blocks), min(Kc_blocks, Kt_blocks)
 
-            # if _use_cpp_gemm_strategy("VERTICAL") and _use_cpp_gemm_strategy("HORIZONTAL"):
-            #     if blockings:
-            #         vertical_blocking, horizental_blocking = blockings, blockings
-            #     else:
-            #         vertical_blocking = _get_cache_block_of_vertical_transverse()
-            #         horizental_blocking = _get_cache_block_of_horizontal_transverse()
-            #     horizontal_transverse = _choose_horizental_and_vertical(vertical_blocking, horizental_blocking)
-            #     if horizontal_transverse:
-            #         blockings = horizental_blocking
-            #     else:
-            #         blockings = vertical_blocking
-            # elif _use_cpp_gemm_strategy("VERTICAL"):
-            #     blockings = _get_cache_block_of_vertical_transverse()
-            #     horizontal_transverse = False
-            # else:
-            # assert _use_cpp_gemm_strategy("HORIZONTAL")
-            blockings = _get_cache_block_of_horizontal_transverse()
-            horizontal_transverse = True
-            # horizontal_transverse=True
+            if _use_cpp_gemm_strategy("VERTICAL") and _use_cpp_gemm_strategy("HORIZONTAL"):
+                if blockings:
+                    vertical_blocking, horizental_blocking = blockings, blockings
+                else:
+                    vertical_blocking = _get_cache_block_of_vertical_transverse()
+                    horizental_blocking = _get_cache_block_of_horizontal_transverse()
+                horizontal_transverse = _choose_horizental_and_vertical(vertical_blocking, horizental_blocking)
+                if horizontal_transverse:
+                    blockings = horizental_blocking
+                else:
+                    blockings = vertical_blocking
+            elif _use_cpp_gemm_strategy("VERTICAL"):
+                if not blockings:
+                    blockings = _get_cache_block_of_vertical_transverse()
+                horizontal_transverse = False
+            else:
+                assert _use_cpp_gemm_strategy("HORIZONTAL")
+                if not blockings:
+                    blockings = _get_cache_block_of_horizontal_transverse()
+                horizontal_transverse = True
+
             return GemmBlocking(*blockings), value_to_cpp(horizontal_transverse, "bool")
 
         assert not self.is_dynamic_M, (

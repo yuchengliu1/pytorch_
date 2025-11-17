@@ -1144,7 +1144,6 @@ inline void {{kernel_name}}(
         // Dequantize K * block_n int8 B elements into BF16
         load_dequantized_B(n);
 {%- endif %}
-        for (int64_t n = 0; n < N; n += {{block_n}}) {
             int64_t block_m = std::min<int64_t>(M - m, {{block_m}});
             int64_t m_tail = m;
 {%- for num_rows in range(block_m, 0, -16) %}
@@ -1152,6 +1151,7 @@ inline void {{kernel_name}}(
             else
     {%- endif %}
             if (block_m >= {{num_rows}}) {
+            for (int64_t n = 0; n < N; n += {{block_n}}) {
 {%- if enable_epilogue %}
                 {{kernel_name}}_amx_kernel_{{num_rows}}_{{num_columns}}<accum, horizontal_transverse, do_epilogue>(
 {%- else %}
@@ -1181,11 +1181,13 @@ inline void {{kernel_name}}(
 {%- endif %}
                     16
                 );
+                }
                 block_m -= {{num_rows}};
                 m_tail += {{num_rows}};
             }
 {%- endfor %}
             if (block_m > 0) {
+            for (int64_t n = 0; n < N; n += {{block_n}}) {
 {%- if enable_epilogue %}
                 {{kernel_name}}_amx_kernel_16_{{num_columns}}<accum, horizontal_transverse, do_epilogue>(
 {%- else %}
@@ -1215,9 +1217,9 @@ inline void {{kernel_name}}(
 {%- endif %}
                     block_m
                 );
+                }
             }
-        }
-    } 
+        } 
     }
     else {
 
