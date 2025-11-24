@@ -1887,8 +1887,6 @@ int k = 0;
         for_liners_end.append(code_lines[for_list[-2]])
         for_liners_end.append(code_lines[for_list[-1]])
 
-        import pdb; pdb.set_trace()
-
         if amx_epilogue:
             amx_lines = []
             amx_lines.append("              if((i++)%t==0){")
