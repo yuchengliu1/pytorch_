@@ -248,12 +248,8 @@ GEMM_TEMPLATE = r"""
                 for (int64_t kc = k_block_start; kc < k_block_end; kc += Kc_blocks) {
                     int64_t k_start = kc * Kr;
                     int64_t k_end = std::min(std::min(kc + Kc_blocks, k_block_end) * Kr, K);
-                    for (int64_t mci = m_start; mci < m_end; mci+=Mr) {
-                        const int64_t m_start_i = mci;
-                        const int64_t m_end_i = std::min(m_start_i + Mr, m_end);
-{%- set tile_X = kernel.slice_nd(X, [("m_start_i", "m_end_i"), ("k_start", "k_end")]) %}
-                        //for (int64_t nci = nc; nci < nc_block_end; nci++) {
-{%- set acc_slice = kernel.slice_nd(acc, [("m_start_i - m_start", "m_end_i - m_start"), ("0", "n_end - n_start")]) %}
+{%- set tile_X = kernel.slice_nd(X, [("m_start", "m_end"), ("k_start", "k_end")]) %}
+{%- set acc_slice = kernel.slice_nd(acc, [("0", "m_end-m_start"), ("0", "n_end - n_start")]) %}
 {%- if template.should_block_weights and not is_woq_int4 %}
 {%- set tile_W_3d = kernel.slice_nd(W, [("nc", "nc + 1"), ("k_start", "k_end"), ()]) %}
 {%- set tile_W = kernel.view(tile_W_3d, ["k_end - k_start", micro_gemm.register_blocking.block_n]) %}
@@ -271,7 +267,7 @@ GEMM_TEMPLATE = r"""
 
                         {% if epilogue_in_micro_gemm %}
                         N_pad = (nc + Nc_blocks) * Nr > N ? (nc + Nc_blocks) * Nr - N : 0;
-                        {%- set tile_Y = kernel.slice_nd(Y_2d, [("m_start_i", "m_end"), ("n_start", "n_end")]) %}
+                        {%- set tile_Y = kernel.slice_nd(Y_2d, [("m_start", "m_end"), ("n_start", "n_end")]) %}
                         if (kc == k_block_start) {
                             if (kc + Kc_blocks < k_block_end) {
                                 {{ micro_gemm.codegen_call_with_epilogue(kernel,
@@ -288,7 +284,7 @@ GEMM_TEMPLATE = r"""
                                                                                             reindexers=reindexers,
                                                                                             return_str=False),
                                                         epilogue_nodes=epilogue_nodes,
-                                                        offsets=("m_start_i", "n_start"),
+                                                        offsets=("m_start", "n_start"),
                                                         horizontal_transverse=True,
                                                         qscale_and_zeros=tile_qparam)|indent(28, false)
                                 }}
@@ -307,7 +303,7 @@ GEMM_TEMPLATE = r"""
                                                                                             reindexers=reindexers,
                                                                                             return_str=False),
                                                         epilogue_nodes=epilogue_nodes,
-                                                        offsets=("m_start_i", "n_start"),
+                                                        offsets=("m_start", "n_start"),
                                                         horizontal_transverse=True,
                                                         qscale_and_zeros=tile_qparam)|indent(28, false)
                                 }}
@@ -327,7 +323,7 @@ GEMM_TEMPLATE = r"""
                                                                                           reindexers=reindexers,
                                                                                           return_str=False),
                                                        epilogue_nodes=epilogue_nodes,
-                                                       offsets=("m_start_i", "n_start"),
+                                                       offsets=("m_start", "n_start"),
                                                        horizontal_transverse=True,
                                                        qscale_and_zeros=tile_qparam)|indent(28, false)
                             }}
@@ -346,7 +342,7 @@ GEMM_TEMPLATE = r"""
                                                                                           reindexers=reindexers,
                                                                                           return_str=False),
                                                        epilogue_nodes=epilogue_nodes,
-                                                       offsets=("m_start_i", "n_start"),
+                                                       offsets=("m_start", "n_start"),
                                                        horizontal_transverse=True,
                                                        qscale_and_zeros=tile_qparam)|indent(28, false)
                             }}
@@ -366,10 +362,6 @@ GEMM_TEMPLATE = r"""
                             }}
                         }
                     {%- endif %}
-
-
-                        //}
-                    }
                 }
 {%- if maybe_k_slicing %}
                 if (num_Kt_blocks > 1) {
@@ -405,24 +397,23 @@ GEMM_TEMPLATE = r"""
                     int64_t k_start = kc * Kr;
                     int64_t k_end = std::min(std::min(kc + Kc_blocks, k_block_end) * Kr, K);
 {%- set tile_X = kernel.slice_nd(X, [("m_start", "m_end"), ("k_start", "k_end")]) %}
-                    for (int64_t nci = nc; nci < nc_block_end; nci++) {
-{%- set acc_slice = kernel.slice_nd(acc, [("0", "m_end - m_start"), ("(nci - nc)*Nr", "(nci - nc + 1)*Nr")]) %}
+{%- set acc_slice = kernel.slice_nd(acc, [("0", "m_end - m_start"), ("0", "n_end - n_start")]) %}
 {%- if template.should_block_weights and not is_woq_int4 %}
-{%- set tile_W_3d = kernel.slice_nd(W, [("nci", "nci + 1"), ("k_start", "k_end"), ()]) %}
+    {%- set tile_W_3d = kernel.slice_nd(W, [("nc", "nc+1"), ("k_start", "k_end"), ()]) %}
 {%- set tile_W = kernel.view(tile_W_3d, ["k_end - k_start", micro_gemm.register_blocking.block_n]) %}
 {%- else %}
     {%- if is_woq_int4 %}
-        {%- set tile_W = kernel.slice_nd(W, [("nci * Nr", "(nci + 1) * Nr"), ("k_start * Nr / 2", "k_end * Nr / 2")]) %}
+        {%- set tile_W = kernel.slice_nd(W, [("nc * Nr", "nc_block_end * Nr"), ("k_start * Nr / 2", "k_end * Nr / 2")]) %}
         {%- set tile_qparam = kernel.slice_nd(
-            qscale_and_zeros, [("k_start // group_size", "k_end // group_size"), ("nci * Nr", "(nci + 1) * Nr"), ()]) %}
+            qscale_and_zeros, [("k_start // group_size", "k_end // group_size"), ("nc * Nr", "nc_block_end * Nr"), ()]) %}
     {%- else %}
         {%- set tile_W = kernel.slice_nd(W, [("k_start", "k_end"), ("n_start", "n_start + n_size")]) %}
         {%- set tile_qparam = None %}
     {%- endif %}
 {%- endif %}
                     {% if epilogue_in_micro_gemm %}
-                        N_pad = (nci + 1) * Nr > N ? (nci + 1) * Nr - N : 0;
-                        {%- set tile_Y = kernel.slice_nd(Y_2d, [("m_start", "m_end"), ("nci*Nr", "(nci+1)*Nr")]) %}
+                        N_pad = nc_block_end * Nr > N ? nc_block_end * Nr - N : 0;
+                        {%- set tile_Y = kernel.slice_nd(Y_2d, [("m_start", "m_end"), ("Nr*nc", "Nr*(nc+1)")]) %}
                         if (kc == k_block_start) {
                             if (kc + Kc_blocks < k_block_end) {
                                 {{ micro_gemm.codegen_call_with_epilogue(kernel,
@@ -439,7 +430,7 @@ GEMM_TEMPLATE = r"""
                                                                                             reindexers=reindexers,
                                                                                             return_str=False),
                                                         epilogue_nodes=epilogue_nodes,
-                                                        offsets=("m_start", "nci*Nr"),
+                                                        offsets=("m_start", "nc*Nr"),
                                                         horizontal_transverse=False,
                                                         qscale_and_zeros=tile_qparam)|indent(28, false)
                                 }}
@@ -458,7 +449,7 @@ GEMM_TEMPLATE = r"""
                                                                                             reindexers=reindexers,
                                                                                             return_str=False),
                                                         epilogue_nodes=epilogue_nodes,
-                                                        offsets=("m_start", "nci*Nr"),
+                                                        offsets=("m_start", "nc*Nr"),
                                                         horizontal_transverse=False,
                                                         qscale_and_zeros=tile_qparam)|indent(28, false)
                                 }}
@@ -478,7 +469,7 @@ GEMM_TEMPLATE = r"""
                                                                                           reindexers=reindexers,
                                                                                           return_str=False),
                                                        epilogue_nodes=epilogue_nodes,
-                                                       offsets=("m_start", "nci*Nr"),
+                                                       offsets=("m_start", "nc*Nr"),
                                                        horizontal_transverse=False,
                                                        qscale_and_zeros=tile_qparam)|indent(28, false)
                             }}
@@ -497,7 +488,7 @@ GEMM_TEMPLATE = r"""
                                                                                           reindexers=reindexers,
                                                                                           return_str=False),
                                                        epilogue_nodes=epilogue_nodes,
-                                                       offsets=("m_start", "nci*Nr"),
+                                                       offsets=("m_start", "nc*Nr"),
                                                        horizontal_transverse=False,
                                                        qscale_and_zeros=tile_qparam)|indent(28, false)
                             }}
@@ -517,7 +508,6 @@ GEMM_TEMPLATE = r"""
                             }}
                         }
                     {%- endif %}
-                    }
                 }
 {%- if maybe_k_slicing %}
                 if (num_Kt_blocks > 1) {
