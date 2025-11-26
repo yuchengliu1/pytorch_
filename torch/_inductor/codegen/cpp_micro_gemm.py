@@ -1064,10 +1064,10 @@ inline void {{kernel_name}}(
     TEMPLATE_ENTRY = r"""
 {%- if enable_epilogue %}
 {{declare_epilogue_kernel}} {
+    {{kernel.assert_function}}(N % {{block_n}} == 0, "N dimension must be multiple of {{block_n}}");
 {%- else %}
 {{declare_kernel}} {
 {%- endif %}
-    {{kernel.assert_function}}(N % {{block_n}} == 0, "N dimension must be multiple of {{block_n}}");
     {{kernel.assert_function}}(K % 2 == 0, "K dimension must be multiple of 2");
 {%- if pack_vnni_B_locally %}
     {{template.codegen_allocate_weight_buffer("packed_B_buf", input2_t, "K", block_n)}}
